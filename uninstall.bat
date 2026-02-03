@@ -1,42 +1,45 @@
 @echo off
+setlocal
+
 echo ========================================
 echo ClipCatcher Service Uninstaller
 echo ========================================
 echo.
 
-REM Check for admin privileges
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: This script must be run as Administrator!
-    echo.
-    echo Right-click this file and select "Run as administrator"
-    echo.
+net session >nul 2>&1 || (
+    echo Run as Administrator.
     pause
     exit /b 1
 )
 
-echo Stopping ClipCatcher service...
-net stop ClipCatcher 2>nul
+set BASEDIR=%~dp0
+if "%BASEDIR:~-1%"=="\" set BASEDIR=%BASEDIR:~0,-1%
 
-if %errorlevel% equ 0 (
-    echo ✅ Service stopped
-) else (
-    echo ⚠️  Service was not running
+set SERVICE=ClipCatcher
+set NSSM=%BASEDIR%\nssm.exe
+
+if not exist "%NSSM%" (
+    echo ERROR: nssm.exe not found in current directory
+    pause
+    exit /b 1
 )
 
+sc query %SERVICE% >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Service not installed.
+    pause
+    exit /b 0
+)
+
+echo Stopping service...
+net stop %SERVICE% >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo Removing ClipCatcher service...
-sc delete ClipCatcher
-
-if %errorlevel% equ 0 (
-    echo ✅ Service removed successfully
-    echo.
-    echo The service has been uninstalled.
-    echo You can manually delete clipcatcher.exe if desired.
-) else (
-    echo ⚠️  Service may not have been installed
-)
+echo Removing service...
+"%NSSM%" remove %SERVICE% confirm
 
 echo.
+echo ========================================
+echo ✅ ClipCatcher service removed
+echo ========================================
 pause
