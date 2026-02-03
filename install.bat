@@ -1,97 +1,73 @@
 @echo off
+setlocal enabledelayedexpansion
+
 echo ========================================
 echo ClipCatcher Service Installer
 echo ========================================
 echo.
 
-REM Check for admin privileges
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: This script must be run as Administrator!
-    echo.
-    echo Right-click this file and select "Run as administrator"
-    echo.
+REM --- Admin check ---
+net session >nul 2>&1 || (
+    echo ERROR: Run as Administrator.
     pause
     exit /b 1
 )
 
-echo Looking for clipcatcher.exe...
-if not exist "%~dp0clipcatcher.exe" (
-    echo ERROR: clipcatcher.exe not found in this folder!
-    echo Current folder: %~dp0
-    echo.
-    dir /b clipcatcher.exe 2>nul
-    echo.
-    pause
-    exit /b 1
-)
+REM --- Resolve current directory safely ---
+set BASEDIR=%~dp0
+if "%BASEDIR:~-1%"=="\" set BASEDIR=%BASEDIR:~0,-1%
 
-echo ✅ Found clipcatcher.exe
+set SERVICE=ClipCatcher
+set EXE=%BASEDIR%\clipcatcher.exe
+set NSSM=%BASEDIR%\nssm.exe
+
+echo Using directory:
+echo   %BASEDIR%
 echo.
 
-REM Stop and remove service if it already exists
-sc query ClipCatcher >nul 2>&1
-if %errorlevel% equ 0 (
-    echo Stopping existing service...
-    net stop ClipCatcher >nul 2>&1
-    timeout /t 2 /nobreak >nul
+REM --- Validate files ---
+if not exist "%EXE%" (
+    echo ERROR: clipcatcher.exe not found in current directory
+    pause
+    exit /b 1
+)
+
+if not exist "%NSSM%" (
+    echo ERROR: nssm.exe not found in current directory
+    pause
+    exit /b 1
+)
+
+REM --- Remove existing service ---
+sc query %SERVICE% >nul 2>&1 && (
     echo Removing existing service...
-    sc delete ClipCatcher >nul 2>&1
-    timeout /t 2 /nobreak >nul
-    echo.
+    net stop %SERVICE% >nul 2>&1
+    "%NSSM%" remove %SERVICE% confirm
 )
 
-echo Installing ClipCatcher service...
-echo Full path: %~dp0clipcatcher.exe
-sc create ClipCatcher binPath= "%~dp0clipcatcher.exe" start= auto DisplayName= "Clipboard Hijacker Detector"
+REM --- Install service ---
+echo Installing service...
+"%NSSM%" install %SERVICE% "%EXE%"
 
-if %errorlevel% neq 0 (
-    echo.
-    echo ERROR: Failed to create service!
-    echo This might be because:
-    echo  1. You're not running as Administrator
-    echo  2. A service with this name already exists
-    echo  3. The exe path is invalid
-    echo.
-    pause
-    exit /b 1
-)
+REM --- Configure service ---
+"%NSSM%" set %SERVICE% DisplayName "Clipboard Hijacker Detector"
+"%NSSM%" set %SERVICE% Start SERVICE_AUTO_START
+"%NSSM%" set %SERVICE% AppDirectory "%BASEDIR%"
+"%NSSM%" set %SERVICE% AppNoConsole 1
+"%NSSM%" set %SERVICE% AppRestartDelay 5000
 
-echo ✅ Service created successfully!
-echo.
-
-echo Configuring service to restart on failure...
-sc failure ClipCatcher reset= 86400 actions= restart/5000/restart/10000/restart/30000
-
-echo.
-echo Starting ClipCatcher service...
-net start ClipCatcher
+REM --- Start service ---
+net start %SERVICE%
 
 if %errorlevel% equ 0 (
     echo.
     echo ========================================
-    echo ✅ SUCCESS! ClipCatcher is now running!
+    echo ✅ ClipCatcher is LIVE
     echo ========================================
-    echo.
-    echo The service will:
-    echo  - Start automatically with Windows
-    echo  - Monitor clipboard 24/7
-    echo  - Log any hijacking attempts to:
-    echo    %~dp0clipboard_hijacker_log.txt
-    echo.
-    echo To check status: sc query ClipCatcher
-    echo To uninstall: run uninstall.bat as admin
-    echo.
 ) else (
     echo.
-    echo ⚠️ WARNING: Service created but failed to start!
-    echo.
-    echo This might be because the exe is not a valid Windows service.
-    echo Try checking Windows Event Viewer for error details.
-    echo.
-    echo To check: eventvwr.msc
-    echo Look under: Windows Logs ^> Application
-    echo.
+    echo ⚠️ Service installed but failed to start
+    echo Check Event Viewer or NSSM logs
 )
 
 pause
